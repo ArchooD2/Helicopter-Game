@@ -277,12 +277,12 @@ function moveParallax() {
 }
 function addObstacles() {
     for (var i = 0; i < 17; i++) {
-        var spacing = 200;
+        var spacing = 300;
         var x = getWidth() + i * spacing;
 
         if (Randomizer.nextBoolean()) {
             // GAP OBSTACLE
-            var gap = 100;
+            var gap = Math.max(100, getHeight() / 5);
             var topH = Randomizer.nextInt(40, getHeight() - gap - 40);
             var botY = topH + gap;
 
