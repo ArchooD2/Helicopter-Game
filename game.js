@@ -25,7 +25,7 @@ var stars = [];
 
 function initParallax() {
     // Gradient night sky (stacked rectangles)
-    var steps = 20; 
+    var steps = 100; 
     for (var i = 0; i < steps; i++) {
         var rect = new Rectangle(getWidth(), getHeight() / steps);
         var ratio = i / steps;
