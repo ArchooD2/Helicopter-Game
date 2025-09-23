@@ -156,7 +156,7 @@ function setup() {
 
     setBackgroundColor(Color.black);
     initParallax();
-    copter = new WebImage(ImageLibrary.Objects.helicopter);
+    copter = new WebImage("assets/helicopter.png");
     copter.setSize(60, 30);
     copter.setPosition(getWidth()/3, getHeight()/2);
     add(copter);
