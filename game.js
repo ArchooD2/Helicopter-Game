@@ -4,6 +4,9 @@ var SPEED = 5;
 var MAX_DY = 13;
 var OBSTACLE_WIDTH = 20;
 var OBSTACLE_HEIGHT = 100;
+var highScore = localStorage.getItem("copterHighScore") || 0;
+var gameMode = "Classic"; // "Classic" or "NuCopter"
+var speedFactor = 1;
 
 var copter;
 var dy = SPEED;
@@ -11,6 +14,10 @@ var clicking = false;
 var score = 0;
 var scoreLabel;
 var menuButton;
+var restartButton;
+var menuButton;
+var classicBtn;
+var nuBtn;
 var restartButton;
 
 var obstacles = [];
@@ -21,6 +28,7 @@ var bottomTerrain = [];
 var allUI = []; // Track all UI elements for cleanup
 var parallaxLayers = [];
 var stars = [];
+var explosionParticles = [];
 
 
 function initParallax() {
@@ -68,8 +76,6 @@ function initParallax() {
     }
 }
 
-
-
 function showMenu() {
     setBackgroundColor(Color.black);
 
@@ -83,25 +89,56 @@ function showMenu() {
     menuButton.setPosition(getWidth()/2 - 75, 180);
     add(menuButton); allUI.push(menuButton);
 
-    var label = new Text("Play", "20pt Arial");
+    var label = new Text("Play (Default)", "20pt Arial");
     label.setColor(Color.black);
-    label.setPosition(getWidth()/2 - 20, 210);
+    label.setPosition(getWidth()/2 - label.getWidth()/2, 210);
     add(label); 
     allUI.push(label);
 
+    classicBtn = new Rectangle(150, 40);
+    classicBtn.setColor(Color.blue);
+    classicBtn.setPosition(getWidth()/2 - 75, 250);
+    add(classicBtn); allUI.push(classicBtn);
+
+    var classicLabel = new Text("Classic Mode", "16pt Arial");
+    classicLabel.setColor(Color.white);
+    classicLabel.setPosition(getWidth()/2 - classicLabel.getWidth()/2, 275);
+    add(classicLabel); allUI.push(classicLabel);
+
+    nuBtn = new Rectangle(150, 40);
+    nuBtn.setColor(Color.purple);
+    nuBtn.setPosition(getWidth()/2 - 75, 300);
+    add(nuBtn); allUI.push(nuBtn);
+
+    var nuLabel = new Text("NuCopter Mode", "16pt Arial");
+    nuLabel.setColor(Color.white);
+    nuLabel.setPosition(getWidth()/2 - nuLabel.getWidth()/2, 325);
+    add(nuLabel); allUI.push(nuLabel);
+
+    // single handler
     mouseClickMethod(menuClickHandler);
 }
 
 function menuClickHandler(e) {
-    if (menuButton &&
-        e.getX() >= menuButton.getX() && e.getX() <= menuButton.getX() + menuButton.getWidth() &&
-        e.getY() >= menuButton.getY() && e.getY() <= menuButton.getY() + menuButton.getHeight()) {
-
+    if (inside(e, menuButton)) {
+        gameMode = "Classic"; // default if Play is pressed
+        clearUI();
+        mouseClickMethod(null);
+        startGame();
+    } else if (inside(e, classicBtn)) {
+        gameMode = "Classic";
+        clearUI();
+        mouseClickMethod(null);
+        startGame();
+    } else if (inside(e, nuBtn)) {
+        gameMode = "NuCopter";
         clearUI();
         mouseClickMethod(null);
         startGame();
     }
 }
+
+
 
 function showRestart() {
     restartButton = new Rectangle(140, 40);
@@ -139,6 +176,7 @@ function clearUI() {
 }
 
 function startGame() {
+    console.log(gameMode)
     setup();
     setTimer(game, DELAY);
     mouseDownMethod(onMouseDown);
@@ -146,7 +184,8 @@ function startGame() {
 }
 
 function setup() {
-    dy = SPEED;
+    speedFactor = 1;
+    dy = SPEED * speedFactor;
     score = 0;
     obstacles = [];
     collectibles = [];
@@ -194,6 +233,11 @@ function game() {
     scoreLabel.setColor(Color.white);
     scoreLabel.setPosition(10, 25);
     add(scoreLabel);
+    if (gameMode === "NuCopter") {
+        speedFactor += 0.005;
+    } else {
+        speedFactor = 1;
+    }
 
     moveParallax();
     updateStars();
@@ -202,6 +246,8 @@ function game() {
     moveTerrain();
     moveObstacles();
     updateCollectibles();
+    animateCollectibles();
+    updateExplosion();
 
     // physics
     if (clicking) {
@@ -210,7 +256,7 @@ function game() {
         dy = Math.min(dy + 1, MAX_DY);
     }
     copter.move(0, dy);
-
+    updateCopterRotation();
     // check terrain collisions
     for (var i = 0; i < topTerrain.length; i++) {
         if (isColliding(copter, topTerrain[i]) || isColliding(copter, bottomTerrain[i])) {
@@ -247,20 +293,57 @@ function game() {
 
 
 function endGame() {
-    stopTimer(game);
+    stopTimer(game); // stop the main loop
+
+    spawnExplosion(copter.getX() + copter.getWidth()/2,
+                   copter.getY() + copter.getHeight()/2);
+    remove(copter);
+
+    // Start a new timer just for explosions
+    setTimer(updateExplosion, 40);
 
     var loseText = new Text("You Lose", "30pt Arial");
     loseText.setColor(Color.red);
     loseText.setPosition(getWidth()/2 - loseText.getWidth()/2, getHeight()/2);
     add(loseText); allUI.push(loseText);
 
+    if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("copterHighScore", highScore);
+    }
+
     var finalScore = new Text("Final Score: " + score, "20pt Arial");
     finalScore.setColor(Color.white);
     finalScore.setPosition(getWidth()/2 - finalScore.getWidth()/2, getHeight()/2 + 40);
     add(finalScore); allUI.push(finalScore);
 
+    var bestScore = new Text("High Score: " + highScore, "18pt Arial");
+    bestScore.setColor(Color.yellow);
+    bestScore.setPosition(getWidth()/2 - bestScore.getWidth()/2, getHeight()/2 + 70);
+    add(bestScore); allUI.push(bestScore);
+    var medalText;
+    if (score >= 2000) {
+        medalText = "🏅 Platinum Medal!";
+    } else if (score >= 1000) {
+        medalText = "🥇 Gold Medal!";
+    } else if (score >= 500) {
+        medalText = "🥈 Silver Medal!";
+    } else if (score >= 200) {
+        medalText = "🥉 Bronze Medal!";
+    }
+
+    if (medalText) {
+        var medal = new Text(medalText, "18pt Arial");
+        medal.setColor(Color.cyan);
+        medal.setPosition(getWidth()/2 - medal.getWidth()/2, getHeight()/2 + 100);
+        add(medal); allUI.push(medal);
+    }
+
+
     showRestart();
 }
+
+
 
 function moveParallax() {
     for (var i = 0; i < parallaxLayers.length; i++) {
@@ -275,6 +358,21 @@ function moveParallax() {
         }
     }
 }
+function animateCollectibles() {
+    for (var i = 0; i < collectibles.length; i++) {
+        var c = collectibles[i];
+        // store a tick counter on the object
+        if (!c.t) c.t = 0;
+        c.t++;
+
+        // oscillate radius to fake squish/spin
+        var scale = 1 + 0.3 * Math.sin(c.t * 0.2); // between 0.7x and 1.3x
+        c.setRadius(10 * scale);
+    }
+}
+
+
+
 function addObstacles() {
     for (var i = 0; i < 17; i++) {
         var spacing = 300;
@@ -328,6 +426,43 @@ function addObstacles() {
         if (i % 2 === 0) spawnCollectible(x + 100);
     }
 }
+function spawnExplosion(x, y) {
+    for (var i = 0; i < 30; i++) {
+        var p = new Circle(3 + Math.random() * 3);
+        p.setColor(new Color(
+            200 + Math.random()*55,
+            Math.random()*150,
+            0
+        ));
+        p.setPosition(x, y);
+        p.vx = (Math.random() - 0.5) * 10;
+        p.vy = (Math.random() - 0.5) * 10;
+        p.life = 30 + Math.random()*20;
+        add(p);
+        explosionParticles.push(p);
+    }
+}
+
+function updateExplosion() {
+    for (var i = explosionParticles.length - 1; i >= 0; i--) {
+        var p = explosionParticles[i];
+        p.move(p.vx, p.vy);
+        p.vx *= 0.95; 
+        p.vy *= 0.95; 
+        p.life--;
+
+        if (p.life <= 0) {
+            remove(p);
+            explosionParticles.splice(i, 1);
+        }
+    }
+
+    // Stop updating once no particles are left
+    if (explosionParticles.length === 0) {
+        stopTimer(updateExplosion);
+    }
+}
+
 
 
 
@@ -335,10 +470,10 @@ function moveObstacles() {
     for (var i = 0; i < obstacles.length; i++) {
         var o = obstacles[i];
         if (o.type === "gap") {
-            o.top.move(-SPEED, 0);
-            o.topGlow.move(-SPEED, 0);
-            o.bottom.move(-SPEED, 0);
-            o.bottomGlow.move(-SPEED, 0);
+            o.top.move(-SPEED * speedFactor, 0);
+            o.topGlow.move(-SPEED * speedFactor, 0);
+            o.bottom.move(-SPEED * speedFactor, 0);
+            o.bottomGlow.move(-SPEED * speedFactor, 0);
 
             if (o.top.getX() + OBSTACLE_WIDTH < 0) {
                 var rightmost = getRightmostXGroup();
@@ -357,8 +492,8 @@ function moveObstacles() {
                 o.bottomGlow.setHeight(getHeight() - botY + 10);
             }
         } else {
-            o.rect.move(-SPEED, 0);
-            o.glow.move(-SPEED, 0);
+            o.rect.move(-SPEED * speedFactor, 0);
+            o.glow.move(-SPEED * speedFactor, 0);
 
             if (o.rect.getX() + OBSTACLE_WIDTH < 0) {
                 var rightmost = getRightmostXGroup();
@@ -390,7 +525,7 @@ function spawnCollectible(x) {
 
 function updateCollectibles() {
     for (var i = collectibles.length - 1; i >= 0; i--) {
-        collectibles[i].move(-SPEED, 0);
+        collectibles[i].move(-SPEED * speedFactor, 0);
         if (collectibles[i].getX() < -20) {
             remove(collectibles[i]);
             collectibles.splice(i, 1);
@@ -400,8 +535,8 @@ function updateCollectibles() {
 
 function moveTerrain() {
     for (var i = 0; i < topTerrain.length; i++) {
-        topTerrain[i].move(-SPEED, 0);
-        bottomTerrain[i].move(-SPEED, 0);
+        topTerrain[i].move(-SPEED * speedFactor, 0);
+        bottomTerrain[i].move(-SPEED * speedFactor, 0);
 
         if (topTerrain[i].getX() + topTerrain[i].getWidth() < 0) {
             var rightX = getRightmostX(topTerrain);
@@ -417,10 +552,15 @@ function moveTerrain() {
 }
 
 function spawnDust() {
-    var d = new Circle(2);
-    d.setColor(Color.gray);
+    var d = new Circle(2 + Math.random()*2);
+    d.setColor(new Color(180+Randomizer.nextInt(-20,20),
+                         180+Randomizer.nextInt(-20,20),
+                         180+Randomizer.nextInt(-20,20)));
     d.setPosition(copter.getX(), copter.getY() + copter.getHeight() / 2);
-    d.radius = 2;
+    d.radius = d.getRadius();
+    d.vx = -SPEED * speedFactor - Math.random()*2; // backward drift
+    d.vy = (Math.random() - 0.5) * 2; // little up/down
+    d.life = 30; // frames to live
     dustParticles.push(d);
     add(d);
 }
@@ -428,16 +568,21 @@ function spawnDust() {
 function updateDust() {
     for (var i = dustParticles.length - 1; i >= 0; i--) {
         var d = dustParticles[i];
-        d.move(-SPEED, 0);
-        d.radius *= 0.9;
-        if (d.radius < 1 || d.getX() + d.getRadius() < 0) {
+        d.move(d.vx, d.vy);
+        d.radius *= 0.95;
+        d.life--;
+
+        if (d.life <= 0 || d.radius < 0.5) {
             remove(d);
             dustParticles.splice(i, 1);
         } else {
             d.setRadius(d.radius);
+            var c = Math.max(50, Math.floor(200 * (d.life / 30))); // fade out
+            d.setColor(new Color(c, c, c));
         }
     }
 }
+
 function updateStars() {
     for (var i = 0; i < stars.length; i++) {
         var star = stars[i];
@@ -467,6 +612,21 @@ function getRightmostX(array) {
         if (x > max) max = x;
     }
     return max + array[0].getWidth();
+}
+
+function updateCopterRotation() {
+    // tilt proportionally to dy
+    var angle = Math.max(-30, Math.min(30, dy * 2));
+    copter.setRotation(angle);
+}
+
+function inside(e, rect) {
+    return (
+        e.getX() >= rect.getX() &&
+        e.getX() <= rect.getX() + rect.getWidth() &&
+        e.getY() >= rect.getY() &&
+        e.getY() <= rect.getY() + rect.getHeight()
+    );
 }
 
 function onMouseDown(e) { clicking = true; }
